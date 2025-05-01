@@ -38,13 +38,4 @@ def plotter(name, y_true, y_pred, ascore, labels):
 		pdf.savefig(fig)
 		plt.close()
 	pdf.close()
-def plot_forecast_results(true, probs, labels):
-	plt.figure(figsize=(10, 4))
-	plt.plot(true[-len(probs):, 0], alpha=0.5, label='True Value')
-	plt.plot(probs[:, 0], label='Anomaly Probability')
-	plt.fill_between(range(len(probs)),
-					 labels[-len(probs):, 0],
-					 alpha=0.2, color='r', label='Ground Truth')
-	plt.legend()
-	plt.savefig(f'plots/forecast_result.png')
-	plt.close()
+

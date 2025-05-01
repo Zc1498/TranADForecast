@@ -149,48 +149,6 @@ def backprop(epoch, model, data, dataO, optimizer, scheduler, training = True):
 			loss = np.concatenate(loss_list)
 
 			return loss.squeeze(), z.squeeze()
-	elif 'TranADForecast' in model.name:
-		l = nn.MSELoss(reduction='none')
-		data_x = torch.DoubleTensor(data)
-		dataset = TensorDataset(data_x, data_x)
-		bs = model.batch if training else len(data)
-		dataloader = DataLoader(dataset, batch_size=bs)
-		total_loss = 0
-
-		if training:
-			for d, _ in dataloader:
-				# 原始重建部分
-				window = d.permute(1, 0, 2)
-				elem = window[-1, :, :].view(1, bs, feats)
-				window = window.to(device)
-				elem = elem.to(device)
-				x1, x2 = model(window[:-1], elem)
-
-				# 未来预测部分
-				pred_steps = 5
-				future_pred = model.predict_future(window[:-1], elem, pred_steps)
-				true_future = window[1:1 + pred_steps]
-
-				# 计算损失
-				loss_recon = l(x2, elem).mean()
-				loss_pred = l(future_pred, true_future).mean()
-				loss = loss_recon + 0.5 * loss_pred
-
-				# 更新误差分布
-				with torch.no_grad():
-					errors = torch.abs(elem - x2)
-					model.update_error_distribution(errors.mean(0))
-
-				optimizer.zero_grad()
-				loss.backward()
-				optimizer.step()
-				total_loss += loss.item()
-			return total_loss / len(dataloader), optimizer.param_groups[0]['lr']
-		else:
-			# 测试时概率计算
-			window = data.permute(1, 0, 2)
-			elem = window[-1].unsqueeze(0)
-			return model.calculate_probability(window[:-1], elem, steps=args.pred_steps).cpu().numpy()
 
 		scheduler.step()
 		tqdm.write(f"[Epoch {epoch}] Recon Loss: {np.mean(l1s):.5f}")
@@ -224,30 +182,6 @@ if __name__ == '__main__':
 	model.eval()
 	print(f'{color.HEADER}Testing {args.model} on {args.dataset}{color.ENDC}')
 	loss, y_pred = backprop(0, model, testD, testO, optimizer, scheduler, training=False)
-
-	if 'Forecast' in args.model:
-		probs = []
-		device = next(model.parameters()).device
-
-		# 数据预处理（确保维度为[total_samples, window_size, features]）
-		testD = testD.reshape(-1, model.n_window, model.n_feats).to(device)
-
-		# 滑动窗口预测
-		for i in tqdm(range(len(testD))):
-			window = testD[i:i + 1]
-		src = window[:, :-1, :]
-		tgt = window[:, -1:, :]
-
-		# 维度检查
-		assert src.shape[1] == model.n_window - 1, \
-			f"输入窗口尺寸错误 预期:{model.n_window - 1} 实际:{src.shape[1]}"
-
-		prob = model.calculate_probability(src, tgt)
-		probs.append(prob)
-
-		# 结果后处理
-		probs = np.array(probs)
-		plot_forecast_results(testO, probs, labels)
 
 	### Plot curves
 	if not args.test:
